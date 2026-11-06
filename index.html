@@ -1900,12 +1900,12 @@ function renderMatrix(students){
     '<p class="mut">Tính trên toàn bộ lịch sử nhật ký của từng học sinh (không cắt theo khoảng ngày phía trên, để thấy cả hành trình): hàng là mức rủi ro của tuần đầu tiên có dữ liệu, cột là mức của tuần gần nhất; mỗi tuần phải có từ 3 ngày ghi mới được xếp loại. Có '+t.counted+' em đủ điều kiện so sánh.</p></div>';
 }
 /* --- Phân cụm DBSCAN (khám phá hành vi xem theo mật độ) --- */
-/* DBSCAN thuần: points là mảng [x,y] ĐÃ chuẩn hoá; trả nhãn cụm 0..k-1, điểm nhiễu = -1. */
+/* DBSCAN thuần: points là mảng các vectơ đặc trưng ĐÃ chuẩn hoá (số chiều tuỳ ý); trả nhãn cụm 0..k-1, điểm nhiễu = -1. */
 function dbscan(points, eps, minPts){
   const n=points.length, labels=new Array(n).fill(undefined);
   function regionQuery(i){ const out=[];
-    for(let j=0;j<n;j++){ const dx=points[i][0]-points[j][0], dy=points[i][1]-points[j][1];
-      if(Math.sqrt(dx*dx+dy*dy)<=eps) out.push(j); }
+    for(let j=0;j<n;j++){ let s2=0; for(let k=0;k<points[i].length;k++){ const d=points[i][k]-points[j][k]; s2+=d*d; }
+      if(Math.sqrt(s2)<=eps) out.push(j); }
     return out; }
   let cid=0;
   for(let i=0;i<n;i++){
@@ -1927,24 +1927,29 @@ function dbscan(points, eps, minPts){
   return labels.map(l=>l===undefined? -1 : l);
 }
 const CLUSTER_COLORS=['#2563eb','#ea580c','#16a34a','#7c3aed','#db2777','#0891b2','#ca8a04','#4f46e5','#65a30d','#0d9488'];
-function clusterLabel(cx, cy, mx, my){
-  const xl=cx<mx, yl=cy<my;
-  if(xl&&yl) return 'Xem ít, hiếm khi vượt giới hạn';
-  if(!xl&&!yl) return 'Xem nhiều và thường vượt giới hạn';
-  if(xl&&!yl) return 'Xem ít nhưng hay vượt giới hạn của mình';
-  return 'Xem nhiều nhưng ít khi vượt giới hạn';
+function clusterDesc(cx, cy, cz, cs){
+  const minTxt= cx>=95? 'Xem rất nhiều' : cx>=65? 'Xem nhiều' : cx>=45? 'Xem ở mức trung bình' : 'Xem ít';
+  const overTxt= cy>=50? 'thường vượt giới hạn' : cy>=15? 'đôi khi vượt giới hạn' : 'hầu như không vượt giới hạn';
+  const lateTxt= cz>=30? 'hay xem khuya' : cz>=12? 'có xem khuya' : 'ít xem khuya';
+  const slopeTxt= cs<=-1.5? 'đang giảm rõ theo thời gian' : cs<=-0.4? 'đang giảm nhẹ theo thời gian' : cs<0.4? 'gần như không đổi theo thời gian' : 'đang tăng theo thời gian';
+  return minTxt+', '+overTxt+', '+lateTxt+', '+slopeTxt;
 }
 function renderClusters(students, rng, wins){
-  const head='<div class="card" style="margin-top:14px"><h3>🧩 Phân cụm hành vi xem — DBSCAN</h3>';
-  const note='<p class="mut">Phương pháp: DBSCAN nhóm các học sinh có hành vi xem tương tự nhau theo mật độ điểm; mỗi học sinh là một điểm với 2 đặc trưng — trung bình phút/ngày và % ngày vượt giới hạn của chính mình — được chuẩn hoá z-score trước khi phân cụm. Tham số: eps = 0,9 (trên dữ liệu đã chuẩn hoá), minPts = 5. Điểm không thuộc cụm nào được đánh dấu là ngoại lệ (×) — cần tìm hiểu riêng. Kết quả phân cụm chỉ để khám phá và tham khảo cho giáo viên, <b>không</b> thay thế mức rủi ro theo thuật toán ở trên và <b>không</b> dùng để xếp hạng học sinh.</p>';
+  const head='<div class="card" style="margin-top:14px"><h3>🧩 Phân cụm hành vi xem — DBSCAN (4 đặc trưng) <span class="badge" style="background:#0d7a69;color:#fff">V9</span></h3>';
+  const note='<p class="mut">Phương pháp: DBSCAN nhóm các học sinh có hành vi xem tương tự nhau theo mật độ điểm; mỗi học sinh là một điểm với 4 đặc trưng — trung bình phút/ngày, % ngày vượt giới hạn của chính mình, % ngày xem sau giờ đi ngủ và xu hướng thay đổi số phút xem theo thời gian (hệ số góc tính theo ngày) — được chuẩn hoá z-score trước khi phân cụm. Tham số: eps = 0,9 (trên dữ liệu đã chuẩn hoá), minPts = 5. Điểm không thuộc cụm nào được đánh dấu là ngoại lệ (×) — cần tìm hiểu riêng. Cách phân cụm này khớp với Bảng 3 trong báo cáo nghiên cứu (mục 2.4). Kết quả phân cụm chỉ để khám phá và tham khảo cho Nhóm nghiên cứu, <b>không</b> thay thế mức rủi ro theo thuật toán ở trên và <b>không</b> dùng để xếp hạng học sinh.</p>';
   if(!rng) return head+'<p class="mut">Chưa đủ dữ liệu để phân cụm (cần tối thiểu 10 học sinh có từ 3 ngày ghi).</p>'+note+'</div>';
   const ws=wins || students.map(s=>studentWindow(s.anon,rng.start,rng.end));
-  const pts=ws.filter(w=>w.nDays>=3).map(w=>({ anon:w.anon, name:w.name, x:w.avgDay, y:w.nDays? w.overDays/w.nDays*100 : 0 }));
+  const pts=ws.filter(w=>w.nDays>=3).map(w=>{
+    const days=Object.keys(w.byDay).sort();
+    const sl=days.length? linSlope(days.map(d=>({ x:daysInRange(days[0],d)-1, y:w.byDay[d] }))) : null;
+    return { anon:w.anon, name:w.name, x:w.avgDay, y:w.nDays? w.overDays/w.nDays*100 : 0, z:w.nDays? w.lateDays/w.nDays*100 : 0, s:(sl===null?0:sl) };
+  });
   if(pts.length<10) return head+'<p class="mut">Chưa đủ dữ liệu để phân cụm (cần tối thiểu 10 học sinh có từ 3 ngày ghi). Hiện có '+pts.length+' học sinh đủ điều kiện trong khoảng đã chọn.</p>'+note+'</div>';
-  const mx=mean(pts.map(q=>q.x)), sx=sd(pts.map(q=>q.x))||1, my=mean(pts.map(q=>q.y)), sy=sd(pts.map(q=>q.y))||1;
-  const labels=dbscan(pts.map(q=>[(q.x-mx)/sx,(q.y-my)/sy]), 0.9, 5);
+  const dims=['x','y','z','s'], ms={}, ss={};
+  dims.forEach(k=>{ ms[k]=mean(pts.map(q=>q[k])); ss[k]=sd(pts.map(q=>q[k]))||1; });
+  const labels=dbscan(pts.map(q=>dims.map(k=>(q[k]-ms[k])/ss[k])), 0.9, 5);
   const clusterIds=[...new Set(labels.filter(l=>l>=0))].sort((a,b)=>a-b);
-  /* Biểu đồ tán xạ trên đơn vị gốc */
+  /* Biểu đồ tán xạ trên 2 đặc trưng chính; màu điểm là cụm tính theo cả 4 đặc trưng */
   const maxX=Math.max.apply(null, pts.map(q=>q.x).concat([10]))*1.15;
   const maxY=108;
   const L=52, R=14, T=14, PH=300, PW=760, W=L+R+PW, H=T+PH+46;
@@ -1958,21 +1963,22 @@ function renderClusters(students, rng, wins){
   g+='<text x="'+(L+PW/2)+'" y="'+(H-4)+'" font-size="12" text-anchor="middle" fill="#334155">Trung bình phút xem / ngày</text>';
   g+='<text x="14" y="'+(T+PH/2)+'" font-size="12" text-anchor="middle" fill="#334155" transform="rotate(-90 14 '+(T+PH/2)+')">% ngày vượt giới hạn</text>';
   pts.forEach((q,i)=>{ const lb=labels[i], cx=X(q.x), cy=Y(q.y);
-    if(lb<0){ g+='<g stroke="#94a3b8" stroke-width="2.4"><line x1="'+(cx-6)+'" y1="'+(cy-6)+'" x2="'+(cx+6)+'" y2="'+(cy+6)+'"/><line x1="'+(cx-6)+'" y1="'+(cy+6)+'" x2="'+(cx+6)+'" y2="'+(cy-6)+'"/></g><title>'+esc(q.name)+' ('+esc(q.anon)+'): '+fmt1(q.x)+' phút/ngày · '+Math.round(q.y)+'% ngày vượt — Ngoại lệ</title>'; }
-    else { g+='<circle cx="'+cx+'" cy="'+cy+'" r="6" fill="'+CLUSTER_COLORS[lb%CLUSTER_COLORS.length]+'" fill-opacity="0.82" stroke="#fff" stroke-width="1.2"><title>'+esc(q.name)+' ('+esc(q.anon)+'): '+fmt1(q.x)+' phút/ngày · '+Math.round(q.y)+'% ngày vượt — Cụm '+(lb+1)+'</title></circle>'; }
+    const info=esc(q.name)+' ('+esc(q.anon)+'): '+fmt1(q.x)+' phút/ngày · '+Math.round(q.y)+'% ngày vượt · '+Math.round(q.z)+'% ngày xem khuya · xu hướng '+(q.s>0?'+':'')+fmt1(q.s)+' phút/ngày';
+    if(lb<0){ g+='<g stroke="#94a3b8" stroke-width="2.4"><line x1="'+(cx-6)+'" y1="'+(cy-6)+'" x2="'+(cx+6)+'" y2="'+(cy+6)+'"/><line x1="'+(cx-6)+'" y1="'+(cy+6)+'" x2="'+(cx+6)+'" y2="'+(cy-6)+'"/></g><title>'+info+' — Ngoại lệ</title>'; }
+    else { g+='<circle cx="'+cx+'" cy="'+cy+'" r="6" fill="'+CLUSTER_COLORS[lb%CLUSTER_COLORS.length]+'" fill-opacity="0.82" stroke="#fff" stroke-width="1.2"><title>'+info+' — Cụm '+(lb+1)+'</title></circle>'; }
   });
   const svg='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;max-width:880px;height:auto;display:block;margin:0 auto" role="img" aria-label="Biểu đồ phân cụm DBSCAN">'+g+'</svg>';
   const legend='<p style="margin:8px 0">'+clusterIds.map(id=>'<span class="badge" style="background:'+CLUSTER_COLORS[id%CLUSTER_COLORS.length]+';color:#fff;margin-right:6px">Cụm '+(id+1)+'</span>').join('')+(labels.some(l=>l<0)? '<span class="badge" style="background:#e2e8f0;color:#475569">× Ngoại lệ — cần tìm hiểu riêng</span>':'')+'</p>';
   const sumRows=clusterIds.map(id=>{
     const mem=pts.filter((q,i)=>labels[i]===id);
-    const cx=mean(mem.map(q=>q.x)), cy=mean(mem.map(q=>q.y));
-    return '<tr><td><span class="badge" style="background:'+CLUSTER_COLORS[id%CLUSTER_COLORS.length]+';color:#fff">Cụm '+(id+1)+'</span></td><td>'+mem.length+'</td><td>'+fmt1(cx)+'</td><td>'+Math.round(cy)+'%</td><td>'+clusterLabel(cx,cy,mx,my)+'</td></tr>';
+    const cx=mean(mem.map(q=>q.x)), cy=mean(mem.map(q=>q.y)), cz=mean(mem.map(q=>q.z)), cs=mean(mem.map(q=>q.s));
+    return '<tr><td><span class="badge" style="background:'+CLUSTER_COLORS[id%CLUSTER_COLORS.length]+';color:#fff">Cụm '+(id+1)+'</span></td><td>'+mem.length+'</td><td>'+fmt1(cx)+'</td><td>'+Math.round(cy)+'%</td><td>'+Math.round(cz)+'%</td><td>'+(cs>0?'+':'')+fmt1(cs)+'</td><td>'+clusterDesc(cx,cy,cz,cs)+'</td></tr>';
   }).join('');
   const noiseN=labels.filter(l=>l<0).length;
-  const noiseRow= noiseN? '<tr><td><span class="badge" style="background:#e2e8f0;color:#475569">× Ngoại lệ</span></td><td>'+noiseN+'</td><td colspan="2">—</td><td>Ngoại lệ — cần tìm hiểu riêng từng em</td></tr>' : '';
-  const table='<div class="tblwrap"><table><thead><tr><th>Cụm</th><th>Số học sinh</th><th>TB phút/ngày của cụm</th><th>% vượt giới hạn TB</th><th>Mô tả cụm</th></tr></thead><tbody>'+sumRows+noiseRow+'</tbody></table></div>';
+  const noiseRow= noiseN? '<tr><td><span class="badge" style="background:#e2e8f0;color:#475569">× Ngoại lệ</span></td><td>'+noiseN+'</td><td colspan="4">—</td><td>Ngoại lệ — cần tìm hiểu riêng từng em</td></tr>' : '';
+  const table='<div class="tblwrap"><table><thead><tr><th>Cụm</th><th>Số học sinh</th><th>TB phút/ngày của cụm</th><th>% vượt giới hạn TB</th><th>% ngày xem khuya TB</th><th>Xu hướng TB (phút/ngày)</th><th>Mô tả cụm</th></tr></thead><tbody>'+sumRows+noiseRow+'</tbody></table></div>';
   return head+svg+legend+table+
-   '<p class="mut">Phân cụm trên '+pts.length+' học sinh có từ 3 ngày ghi trong khoảng '+fmtVN(rng.start)+' → '+fmtVN(rng.end)+'. Di chuột (hoặc chạm) vào từng điểm để xem học sinh và số liệu của điểm đó.</p>'+note+'</div>';
+   '<p class="mut">Phân cụm trên '+pts.length+' học sinh có từ 3 ngày ghi trong khoảng '+fmtVN(rng.start)+' → '+fmtVN(rng.end)+'. Biểu đồ tán xạ vẽ theo 2 đặc trưng chính (phút/ngày và % ngày vượt giới hạn); màu của mỗi điểm là cụm được tính theo cả 4 đặc trưng. Di chuột (hoặc chạm) vào từng điểm để xem học sinh và số liệu của điểm đó.</p>'+note+'</div>';
 }
 function renderStats(){
   fillStatsClass();
