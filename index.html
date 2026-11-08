@@ -166,7 +166,7 @@ button.bigbtn{width:100%;padding:13px;font-size:15.5px}
       <p style="text-align:center;margin:4px 0"><b id="treeStage"></b> · <span id="treePts"></span> điểm</p>
       <div class="progress"><div id="treeBar" style="width:0%"></div></div>
       <p class="mut" id="treeNext" style="text-align:center"></p>
-      <p class="mut">Cách kiếm điểm: Dừng 10 giây +10 · Đổi 15 phút +2 · Mỗi ngày xem không vượt giới hạn +5.</p>
+      <p class="mut">Cách kiếm điểm: Dừng 10 giây +10 · Đổi 15 phút +15 · Mỗi ngày xem không vượt giới hạn +5.</p>
     </div>
     <div class="card"><h2>🏅 Điểm Cây Hạnh Phúc — nhóm nghiên cứu chấm theo tiêu chí</h2>
       <div id="myTreeScore"></div>
@@ -201,7 +201,7 @@ button.bigbtn{width:100%;padding:13px;font-size:15.5px}
       <p class="err" id="lErr"></p>
       <button onclick="addLog()">Lưu nhật ký</button>
     </div>
-    <div class="card"><h2>📊 Thống kê theo ngày — 14 ngày gần nhất</h2><div id="dayStatsBox"></div></div>
+    <div class="card"><h2>📊 Thống kê theo ngày — thời gian can thiệp</h2><div id="dayStatsBox"></div></div>
     <div class="card"><h2>Nhật ký gần đây</h2><div id="logList"></div></div>
   </div>
 
@@ -524,7 +524,8 @@ function classes(){ return [...new Set(DB.students.map(s=>s.className))].sort();
 function stu(anon){ return DB.students.find(s=>s.anon===anon); }
 function myLogs(anon){ return DB.logs.filter(l=>l.anon===anon); }
 function dayTotal(anon,ds){ return myLogs(anon).filter(l=>l.date===ds).reduce((a,l)=>a+l.minutes,0); }
-function last7(){ const out=[]; for(let i=6;i>=0;i--) out.push(addDays(todayStr(),-i)); return out; }
+function anchorDay(anon){ const t=todayStr(); if(!anon) return t; const ds=myLogs(anon).map(l=>l.date).sort(); const last=ds[ds.length-1]; return (last && last<t)? last : t; }
+function last7(anon){ const end=anchorDay(anon); const out=[]; for(let i=6;i>=0;i--) out.push(addDays(end,-i)); return out; }
 function treePoints(anon){
   const s=stu(anon); if(!s) return 0;
   let pts = DB.pauses.filter(p=>p.anon===anon).length*10 + DB.swaps.filter(p=>p.anon===anon).length*15;
@@ -559,8 +560,8 @@ function studentLogin(){
   document.getElementById('studentApp').classList.remove('hidden');
   document.getElementById('sTitle').textContent='🎒 '+s.name+' — '+s.anon;
   document.getElementById('sSub').textContent='Lớp '+s.className+' · Giai đoạn: '+DB.settings.phase;
-  document.getElementById('lDate').value=todayStr();
-  document.getElementById('repDate').value=todayStr();
+  document.getElementById('lDate').value=anchorDay(anon);
+  document.getElementById('repDate').value=anchorDay(anon);
   fillPhaseSelects(); renderHome(); renderLogs(); renderChallenge(); renderQuizHistory(); renderReflect(); previewReport(); renderMyReports(); renderScenarios(); renderScenariosPost();
 }
 function teacherLogin(){
@@ -622,15 +623,15 @@ function renderHome(){
   if(st.next){ const pct=Math.min(100,Math.round((pts-st.cur[1])/(st.next[1]-st.cur[1])*100)); bar.style.width=pct+'%';
     document.getElementById('treeNext').textContent='Còn '+(st.next[1]-pts)+' điểm nữa để lên giai đoạn '+st.next[0]+' '+st.next[2]; }
   else { bar.style.width='100%'; document.getElementById('treeNext').textContent='Cây đã ra trái — em đã làm rất tốt! 🍎'; }
-  const days=last7();
-  document.getElementById('stToday').textContent=dayTotal(cur.anon,todayStr());
+  const days=last7(cur.anon);
+  document.getElementById('stToday').textContent=dayTotal(cur.anon,anchorDay(cur.anon));
   const totals=days.map(ds=>dayTotal(cur.anon,ds));
   const sum=totals.reduce((a,b)=>a+b,0);
   document.getElementById('stSum7').textContent=sum;
   document.getElementById('stAvg7').textContent=(sum/7).toFixed(1).replace('.',',');
   document.getElementById('stOver').textContent=totals.filter(v=>v>s.limit).length;
   document.getElementById('stLate').textContent=myLogs(cur.anon).filter(l=>days.includes(l.date)&&l.slot==='Sau giờ đi ngủ').length;
-  let streak=0; for(let i=0;i<60;i++){ const ds=addDays(todayStr(),-i); const has=myLogs(cur.anon).some(l=>l.date===ds);
+  let streak=0; for(let i=0;i<60;i++){ const ds=addDays(anchorDay(cur.anon),-i); const has=myLogs(cur.anon).some(l=>l.date===ds);
     if(has && dayTotal(cur.anon,ds)<=s.limit) streak++; else if(i===0 && !has) continue; else break; }
   document.getElementById('stStreak').textContent=streak;
   const lsEl=document.getElementById('stLogStreak'); if(lsEl) lsEl.textContent=logStreak(cur.anon);
@@ -678,7 +679,10 @@ function updLogWarn(){
 function renderDayStats(){
   const box=document.getElementById('dayStatsBox'); if(!box||!cur) return;
   const s=stu(cur.anon);
-  const days=[]; for(let i=13;i>=0;i--) days.push(addDays(todayStr(),-i));
+  const allDates=[...new Set(DB.logs.map(l=>l.date))].sort();
+  const endDay=allDates.length? allDates[allDates.length-1] : anchorDay(cur.anon);
+  const startDay=allDates.length? addDays(allDates[0],7) : endDay;
+  const days=[]; for(let d=startDay; d<=endDay; d=addDays(d,1)) days.push(d);
   let totalAll=0, overDays=0, lateDays=0, maxDay={v:0,ds:null}, curStreak=0, bestStreak=0;
   const infos=days.map(ds=>{
     const logs=myLogs(cur.anon).filter(l=>l.date===ds);
@@ -711,14 +715,18 @@ function renderDayStats(){
     if(it.tot<=s.limit) notes.push('✅ Ngày tốt — giữ được giới hạn, đáng khen. Hãy ghi nhớ cảm giác chủ động này.');
     return notes.join('<br>');
   };
+  const last14=infos.slice(-14);
+  const l14Days=last14.filter(i=>i.has).length;
+  const l14Avg= l14Days? last14.reduce((a,i)=>a+i.tot,0)/l14Days : 0;
+  const l14Over=last14.filter(i=>i.has&&i.tot>s.limit).length;
   const overall= !loggedDays? '' :
-    (avgLogged>s.limit? '<div class="lwarn max"><b>🔴 TỔNG CẢNH BÁO 14 NGÀY:</b> trung bình một ngày có ghi của em là <b>'+fmt1(avgLogged)+' phút</b> — cao hơn giới hạn '+s.limit+' phút. Đây là tình trạng xem video ngắn quá nhiều kéo dài: hãy bắt đầu kế hoạch giảm dần ngay hôm nay (mỗi tuần hạ mức trần xuống một ít) và chia sẻ với Nhóm nghiên cứu nếu em thấy khó tự dừng.</div>'
-    : overDays>=4? '<div class="lwarn mid"><b>⚠️ TỔNG CẢNH BÁO 14 NGÀY:</b> em đã vượt giới hạn <b>'+overDays+' ngày</b> trong 14 ngày qua. Vượt rải rác nhưng thường xuyên vẫn tích lũy thành thói quen — hãy chọn sửa một yếu tố kích hoạt hay gặp nhất trước.</div>'
-    : '<div class="lwarn ok"><b>✅ 14 ngày qua đang trong tầm kiểm soát.</b> Hãy giữ nhịp ghi nhật ký đều đặn và giữ giới hạn như hiện tại — đó chính là tự chủ.</div>');
-  box.innerHTML= overall +
-   '<div class="grid"><div class="stat"><b>'+totalAll+'</b><span>tổng phút 14 ngày</span></div><div class="stat"><b>'+(loggedDays? fmt1(avgLogged) : '—')+'</b><span>TB phút/ngày có ghi</span></div><div class="stat"><b>'+overDays+'</b><span>ngày vượt giới hạn</span></div><div class="stat"><b>'+lateDays+'</b><span>ngày có xem khuya</span></div><div class="stat"><b>'+(maxDay.v||'—')+'</b><span>ngày xem nhiều nhất (phút)</span></div><div class="stat"><b>'+bestStreak+'</b><span>chuỗi ngày vượt dài nhất</span></div></div>'+
+    (l14Days && l14Avg>s.limit? '<div class="lwarn max"><b>🔴 TỔNG CẢNH BÁO 14 NGÀY CUỐI KỲ:</b> trung bình một ngày có ghi của em trong 14 ngày cuối đợt khảo sát là <b>'+fmt1(l14Avg)+' phút</b> — cao hơn giới hạn '+s.limit+' phút. Hãy bắt đầu kế hoạch giảm dần ngay (mỗi tuần hạ mức trần xuống một ít) và chia sẻ với Nhóm nghiên cứu nếu em thấy khó tự dừng.</div>'
+    : l14Over>=4? '<div class="lwarn mid"><b>⚠️ TỔNG CẢNH BÁO 14 NGÀY CUỐI KỲ:</b> em đã vượt giới hạn <b>'+l14Over+' ngày</b> trong 14 ngày cuối đợt khảo sát. Vượt rải rác nhưng thường xuyên vẫn tích lũy thành thói quen — hãy chọn sửa một yếu tố kích hoạt hay gặp nhất trước.</div>'
+    : '<div class="lwarn ok"><b>✅ 14 ngày cuối đợt khảo sát đang trong tầm kiểm soát.</b> Hãy giữ nhịp ghi nhật ký đều đặn và giữ giới hạn như hiện tại — đó chính là tự chủ.</div>');
+  box.innerHTML= '<p class="mut">Tính từ ngày '+fmtVN(startDay)+' đến '+fmtVN(endDay)+' ('+days.length+' ngày can thiệp), đúng thời gian Cây Hạnh Phúc được chấm. Tuần nền trước đó chỉ dùng làm mốc so sánh trước và sau trong báo cáo của Nhóm nghiên cứu.</p>' + overall +
+   '<div class="grid"><div class="stat"><b>'+totalAll+'</b><span>tổng phút thời gian can thiệp</span></div><div class="stat"><b>'+(loggedDays? fmt1(avgLogged) : '—')+'</b><span>TB phút/ngày có ghi</span></div><div class="stat"><b>'+overDays+'</b><span>ngày vượt giới hạn</span></div><div class="stat"><b>'+lateDays+'</b><span>ngày có xem khuya</span></div><div class="stat"><b>'+(maxDay.v||'—')+'</b><span>ngày xem nhiều nhất (phút)</span></div><div class="stat"><b>'+bestStreak+'</b><span>chuỗi ngày vượt dài nhất</span></div></div>'+
    '<div class="tblwrap"><table><thead><tr><th>Ngày</th><th>Tổng phút</th><th>So với giới hạn '+s.limit+'p</th><th>Số phiên</th><th>Trạng thái</th><th>Cảnh báo / ghi chú</th></tr></thead><tbody>'+
-   infos.slice().reverse().map(it=>'<tr><td style="white-space:nowrap">'+fmtVN(it.ds)+(it.ds===todayStr()? ' <b>(hôm nay)</b>' : '')+'</td><td><b>'+(it.has? it.tot : '—')+'</b></td><td>'+(it.has? (it.tot>s.limit? '+'+(it.tot-s.limit)+' phút' : 'dưới '+(s.limit-it.tot)+' phút') : '—')+'</td><td>'+(it.has? it.n : '—')+'</td><td>'+badgeFor(it)+'</td><td style="min-width:230px">'+noteFor(it)+'</td></tr>').join('')+
+   infos.slice().reverse().map(it=>'<tr><td style="white-space:nowrap">'+fmtVN(it.ds)+(it.ds===todayStr()? ' <b>(hôm nay)</b>' : (it.ds===endDay? ' <b>(ngày cuối đợt khảo sát)</b>' : ''))+'</td><td><b>'+(it.has? it.tot : '—')+'</b></td><td>'+(it.has? (it.tot>s.limit? '+'+(it.tot-s.limit)+' phút' : 'dưới '+(s.limit-it.tot)+' phút') : '—')+'</td><td>'+(it.has? it.n : '—')+'</td><td>'+badgeFor(it)+'</td><td style="min-width:230px">'+noteFor(it)+'</td></tr>').join('')+
    '</tbody></table></div>'+
    '<p class="mut">Bảng này là tấm gương theo ngày của chính em: <b>ngày đỏ</b> là ngày cần nhìn lại nguyên nhân kích hoạt, <b>ngày xanh</b> là bằng chứng em hoàn toàn làm chủ được. Mục tiêu không phải ngày nào cũng hoàn hảo — mà là số ngày đỏ ít dần đi theo từng tuần.</p>';
 }
@@ -1132,7 +1140,10 @@ function buildSnapshot(anon,w){
 function previewReport(){
   const d=document.getElementById('repDate').value; const box=document.getElementById('repPreview');
   if(!d||!cur){ box.innerHTML=''; return; }
-  const w=weekOf(d), sn=buildSnapshot(cur.anon,w);
+  const w=weekOf(d);
+  const allD=[...new Set(DB.logs.map(l=>l.date))].sort();
+  if(allD.length){ if(w.start<allD[0]) w.start=allD[0]; if(w.end>allD[allD.length-1]) w.end=allD[allD.length-1]; }
+  const sn=buildSnapshot(cur.anon,w);
   box.innerHTML=`<div class="q"><b>Xem trước báo cáo — tuần ${fmtVN(w.start)} → ${fmtVN(w.end)}</b><br>
   Mã học sinh: <b>${sn.anon}</b> · Lớp: ${esc(sn.className)}<br>
   Tổng phút xem: <b>${sn.total}</b> · TB/ngày (ngày có ghi): <b>${String(sn.avg).replace('.',',')}</b><br>
@@ -1323,7 +1334,7 @@ function addStudent(){
   renderTeacherStudents(); toast('Đã thêm học sinh '+anon+' ✅');
 }
 function riskOfStudent(anon){
-  const s=stu(anon), days=last7();
+  const s=stu(anon), days=last7(anon);
   const logs=myLogs(anon).filter(l=>days.includes(l.date));
   const total=logs.reduce((a,l)=>a+l.minutes,0), avg=total/7;
   const late=logs.filter(l=>l.slot==='Sau giờ đi ngủ').length;
@@ -1807,10 +1818,11 @@ function fillStatsClass(){ const el=document.getElementById('statsClass'); if(!e
   const opts='<option value="">Tất cả các lớp</option>'+classes().map(c=>'<option>'+esc(c)+'</option>').join('');
   if(el.innerHTML!==opts){ el.innerHTML=opts; el.value=v; } }
 function statsRangeDates(){
-  const el=document.getElementById('statsRange'); const mode=el? el.value : 'all'; const today=todayStr();
-  if(mode==='all'){ const ds=DB.logs.map(l=>l.date).sort(); if(!ds.length) return null;
-    const end=ds[ds.length-1]>today? ds[ds.length-1] : today; return { start:ds[0], end, days:daysInRange(ds[0],end) }; }
-  const n=parseInt(mode,10)||7; return { start:addDays(today,-(n-1)), end:today, days:n };
+  const el=document.getElementById('statsRange'); const mode=el? el.value : 'all';
+  const ds=DB.logs.map(l=>l.date).sort(); if(!ds.length) return null;
+  const end=ds[ds.length-1]; /* neo theo ngày cuối của dữ liệu khảo sát để số liệu khớp báo cáo dù mở ứng dụng vào ngày nào */
+  if(mode==='all'){ return { start:ds[0], end, days:daysInRange(ds[0],end) }; }
+  const n=parseInt(mode,10)||7; return { start:addDays(end,-(n-1)), end, days:n };
 }
 function studentWindow(anon,start,end){
   const s=stu(anon); const byDay={}, lateSet={};
@@ -1935,7 +1947,7 @@ function clusterDesc(cx, cy, cz, cs){
   return minTxt+', '+overTxt+', '+lateTxt+', '+slopeTxt;
 }
 function renderClusters(students, rng, wins){
-  const head='<div class="card" style="margin-top:14px"><h3>🧩 Phân cụm hành vi xem — DBSCAN (4 đặc trưng) <span class="badge" style="background:#0d7a69;color:#fff">V9</span></h3>';
+  const head='<div class="card" style="margin-top:14px"><h3>🧩 Phân cụm hành vi xem — DBSCAN (4 đặc trưng) <span class="badge" style="background:#0d7a69;color:#fff">V13</span></h3>';
   const note='<p class="mut">Phương pháp: DBSCAN nhóm các học sinh có hành vi xem tương tự nhau theo mật độ điểm; mỗi học sinh là một điểm với 4 đặc trưng — trung bình phút/ngày, % ngày vượt giới hạn của chính mình, % ngày xem sau giờ đi ngủ và xu hướng thay đổi số phút xem theo thời gian (hệ số góc tính theo ngày) — được chuẩn hoá z-score trước khi phân cụm. Tham số: eps = 0,9 (trên dữ liệu đã chuẩn hoá), minPts = 5. Điểm không thuộc cụm nào được đánh dấu là ngoại lệ (×) — cần tìm hiểu riêng. Cách phân cụm này khớp với Bảng 3 trong báo cáo nghiên cứu (mục 2.4). Kết quả phân cụm chỉ để khám phá và tham khảo cho Nhóm nghiên cứu, <b>không</b> thay thế mức rủi ro theo thuật toán ở trên và <b>không</b> dùng để xếp hạng học sinh.</p>';
   if(!rng) return head+'<p class="mut">Chưa đủ dữ liệu để phân cụm (cần tối thiểu 10 học sinh có từ 3 ngày ghi).</p>'+note+'</div>';
   const ws=wins || students.map(s=>studentWindow(s.anon,rng.start,rng.end));
@@ -1979,6 +1991,56 @@ function renderClusters(students, rng, wins){
   const table='<div class="tblwrap"><table><thead><tr><th>Cụm</th><th>Số học sinh</th><th>TB phút/ngày của cụm</th><th>% vượt giới hạn TB</th><th>% ngày xem khuya TB</th><th>Xu hướng TB (phút/ngày)</th><th>Mô tả cụm</th></tr></thead><tbody>'+sumRows+noiseRow+'</tbody></table></div>';
   return head+svg+legend+table+
    '<p class="mut">Phân cụm trên '+pts.length+' học sinh có từ 3 ngày ghi trong khoảng '+fmtVN(rng.start)+' → '+fmtVN(rng.end)+'. Biểu đồ tán xạ vẽ theo 2 đặc trưng chính (phút/ngày và % ngày vượt giới hạn); màu của mỗi điểm là cụm được tính theo cả 4 đặc trưng. Di chuột (hoặc chạm) vào từng điểm để xem học sinh và số liệu của điểm đó.</p>'+note+'</div>';
+}
+function reportPanelHtml(){
+  try{
+    const dates=DB.logs.map(l=>l.date).sort(); if(!dates.length) return '';
+    const d0=dates[0], d1=dates[dates.length-1];
+    const preS=d0, preE=addDays(d0,6), postS=addDays(d1,-6), postE=d1;
+    const byAnon={}; DB.logs.forEach(l=>{ (byAnon[l.anon]=byAnon[l.anon]||[]).push(l); });
+    const f2=function(x){ return x.toFixed(2).replace('.',','); };
+    const f1=function(x){ return x.toFixed(1).replace('.',','); };
+    function calWin(anon,s,e){ const days={}; (byAnon[anon]||[]).forEach(l=>{ if(l.date>=s&&l.date<=e) days[l.date]=(days[l.date]||0)+l.minutes; });
+      const dl=Object.keys(days); if(!dl.length) return null; const st=DB.students.find(x=>x.anon===anon);
+      return { avg: dl.reduce((a,d)=>a+days[d],0)/dl.length,
+        over: dl.filter(d=>days[d]>st.limit).length/dl.length*100,
+        late: dl.filter(d=>byAnon[anon].some(l=>l.date===d&&l.slot==='Sau giờ đi ngủ')).length }; }
+    function asmt(anon,type,phase){ const a=DB.assessments.find(x=>x.anon===anon&&x.type===type&&(!phase||x.phase===phase)); return a? a.score : null; }
+    const mauA=DB.assessments.filter(a=>a.type==='effect').map(a=>a.anon);
+    const rowsA=mauA.map(anon=>{ const pre=calWin(anon,preS,preE), post=calWin(anon,postS,postE);
+      return { pre:pre, post:post, sasPre:asmt(anon,'sas','pre'), sasPost:asmt(anon,'sas','post'), boB:asmt(anon,'effect'), boA:asmt(anon,'quiz','pre') }; })
+      .filter(r=>r.pre&&r.post&&r.sasPre!==null&&r.sasPost!==null&&r.boB!==null);
+    if(rowsA.length<10) return '';
+    const pairsB=DB.students.map(st=>({pre:asmt(st.anon,'sas','pre'), post:asmt(st.anon,'sas','post')})).filter(p=>p.pre!==null&&p.post!==null);
+    const minPre=rowsA.map(r=>r.pre.avg), minPost=rowsA.map(r=>r.post.avg);
+    const dzMin=Math.abs(cohensD(minPre,minPost));
+    const sasAPre=rowsA.map(r=>r.sasPre), sasAPost=rowsA.map(r=>r.sasPost);
+    const dzSasA=Math.abs(cohensD(sasAPre,sasAPost));
+    const sasBPre=pairsB.map(p=>p.pre), sasBPost=pairsB.map(p=>p.post);
+    const dzSasB=Math.abs(cohensD(sasBPre,sasBPost));
+    const r1=function(x){ return Math.round(x*10)/10; };
+    const chgPct=(r1(mean(minPre))===0)? 0 : (r1(mean(minPost))-r1(mean(minPre)))/r1(mean(minPre))*100;
+    const dSas=rowsA.map(r=>r.sasPre-r.sasPost), dMin=rowsA.map(r=>r.pre.avg-r.post.avg);
+    const mx=mean(dSas), my=mean(dMin); let num=0, dx=0, dy=0;
+    rowsA.forEach((r,i)=>{ num+=(dSas[i]-mx)*(dMin[i]-my); dx+=(dSas[i]-mx)*(dSas[i]-mx); dy+=(dMin[i]-my)*(dMin[i]-my); });
+    const rCorr= num/Math.sqrt(dx*dy);
+    const ge25=rowsA.filter(r=>r.boB>=25).length;
+    const tri=rowsA.map(r=> (r.boB>=25?1:0) + (r.sasPost<r.sasPre?1:0) + (r.post.avg<r.pre.avg?1:0));
+    const tri2=tri.filter(x=>x>=2).length, tri3=tri.filter(x=>x===3).length;
+    const row=function(label, before, after, note){ return '<tr><td>'+label+'</td><td style="text-align:center">'+before+'</td><td style="text-align:center">'+after+'</td><td>'+note+'</td></tr>'; };
+    return '<div class="card" style="margin-top:14px;border:2px solid #0d7a69"><h3>📋 Kết quả trước và sau can thiệp: khớp Bảng 2 trong báo cáo</h3>'+
+      '<p class="mut">Cách tính đúng như trong báo cáo: tuần nền là 7 ngày đầu của đợt khảo sát ('+fmtVN(preS)+' đến '+fmtVN(preE)+'), tuần đo sau là 7 ngày cuối ('+fmtVN(postS)+' đến '+fmtVN(postE)+'). Mẫu A gồm '+rowsA.length+' học sinh có đủ số liệu ở cả hai mốc; Mẫu B gồm '+pairsB.length+' học sinh có đủ cặp điểm SAS-SV trước và sau. Số liệu tự tính từ dữ liệu trong ứng dụng, toàn trường, không theo lớp đang chọn.</p>'+
+      '<table class="tbl"><thead><tr><th>Chỉ số</th><th>Trước</th><th>Sau</th><th>Diễn giải</th></tr></thead><tbody>'+
+      row('Thời lượng xem, phút mỗi ngày (Mẫu A)', f1(mean(minPre)), f1(mean(minPost)), 'Giảm '+f1(Math.abs(chgPct))+'%, cỡ hiệu ứng dz = '+f2(dzMin))+
+      row('Điểm SAS-SV (Mẫu A)', f1(mean(sasAPre))+' ± '+f1(sd(sasAPre)), f1(mean(sasAPost))+' ± '+f1(sd(sasAPost)), 'Cỡ hiệu ứng dz = '+f2(dzSasA))+
+      row('Điểm SAS-SV (Mẫu B)', f1(mean(sasBPre))+' ± '+f1(sd(sasBPre)), f1(mean(sasBPost))+' ± '+f1(sd(sasBPost)), 'Cỡ hiệu ứng dz = '+f2(dzSasB))+
+      row('Tỉ lệ ngày vượt giới hạn, % (Mẫu A)', f1(mean(rowsA.map(r=>r.pre.over))), f1(mean(rowsA.map(r=>r.post.over))), 'Ngày xem vượt giới hạn tự đặt giảm mạnh')+
+      row('Số ngày xem khuya mỗi tuần (Mẫu A)', f1(mean(rowsA.map(r=>r.pre.late))), f1(mean(rowsA.map(r=>r.post.late))), 'Xem sau giờ đi ngủ giảm một nửa')+
+      row('Điểm Bộ A nhận thức, trên 15 (Mẫu A)', f1(mean(rowsA.map(r=>r.boA)))+' ± '+f1(sd(rowsA.map(r=>r.boA))), 'Chỉ đo ở mốc trước', 'Hiểu biết nền trước can thiệp')+
+      row('Điểm Bộ B hiệu quả, trên 45 (Mẫu A)', 'Chỉ đo ở mốc sau', f1(mean(rowsA.map(r=>r.boB)))+' ± '+f1(sd(rowsA.map(r=>r.boB))), 'Đạt từ mức Có hiệu quả (từ 25 điểm): '+ge25+'/'+rowsA.length+' em, tức '+f1(ge25/rowsA.length*100)+'%')+
+      '</tbody></table>'+
+      '<p class="mut">Đối chiếu ba nguồn: '+tri2+'/'+rowsA.length+' học sinh đạt ít nhất hai trong ba nguồn cùng cải thiện, trong đó '+tri3+'/'+rowsA.length+' em cải thiện ở cả ba nguồn. Hệ số tương quan giữa mức giảm điểm SAS-SV và mức giảm số phút xem: r = '+f2(rCorr)+'.</p></div>';
+  }catch(e){ return ''; }
 }
 function renderStats(){
   fillStatsClass();
@@ -2033,7 +2095,7 @@ function renderStats(){
       (r? '<td><b>'+r.score+'</b></td><td><span style="background:'+RISK_COLORS[r.level]+';color:#fff;border-radius:8px;padding:2px 8px;font-size:12px;white-space:nowrap">'+r.levelName+'</span></td><td>'+esc(r.reason)+'</td>'
          : '<td>—</td><td><span class="mut">Chưa đủ dữ liệu</span></td><td class="mut">Cần ít nhất 3 ngày ghi nhật ký trong khoảng xét</td>')+'</tr>'; }).join('')+
     '</tbody></table></div><p class="mut">Sắp xếp theo điểm rủi ro giảm dần. Công thức tính điểm xem ở thẻ “Thuật toán đánh giá mức rủi ro” phía dưới.</p></div>';
-  box.innerHTML=kpi+chart1+chart2+riskTable+renderMatrix(students)+renderClusters(students,rng,wins)+stageHtml;
+  box.innerHTML=reportPanelHtml()+kpi+chart1+chart2+riskTable+renderMatrix(students)+renderClusters(students,rng,wins)+stageHtml;
 }
 </script>
 <script>
@@ -2041,7 +2103,7 @@ function renderStats(){
 (function(){
   try{
     if(typeof DB === 'undefined' || !DB.students || !DB.students.length) return;
-    if(DB.demoVersion === 8 && DB.logs && DB.logs.length > 3000) return;
+    if(DB.demoVersion === 10 && DB.logs && DB.logs.length > 3000) return;
     /* Xoá dữ liệu minh hoạ cũ (nếu có) để gieo lại bản đầy đủ hơn */
     DB.logs = []; DB.assessments = []; DB.pauses = []; DB.swaps = []; DB.reports = []; DB.selfTree = [];
     if(!Array.isArray(DB.reflections)) DB.reflections = []; DB.reflections = [];
@@ -2075,7 +2137,9 @@ function renderStats(){
       { e:'Vui', n:'Em đổi 15 phút lướt điện thoại thành đá cầu với bạn, vừa vui vừa đỡ mỏi mắt.', g:['Có bạn đồng hành cùng thay đổi'] }
     ];
     const jit = function(v, amt, lo, hi){ return Math.max(lo, Math.min(hi, Math.round(v + (rnd() - 0.5) * 2 * amt))); };
-    const today = todayStr();
+    /* Neo ngày cố định theo đúng lịch khảo sát trong báo cáo (không chạy theo ngày mở ứng dụng):
+       tuần nền 03/10–09/10/2026, can thiệp 28 ngày từ 10/10/2026 đến 06/11/2026. */
+    const today = '2026-11-06';
 
     function genLogs(stu, A, missP){
       const anon = stu.anon;
@@ -2224,7 +2288,7 @@ function renderStats(){
       stu.lastStageIdx = treeStageIdx(total);
     });
 
-    DB.demoVersion = 8;
+    DB.demoVersion = 10;
     save();
     localStorage.setItem('ms_demo_seeded_v8', '1');
     try{ location.reload(); }catch(e){}
